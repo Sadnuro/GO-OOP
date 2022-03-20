@@ -2,7 +2,8 @@ package main
 
 import "fmt"
 
-func main() {
+// Change name to main for can excute
+func main1() {
 	// Unbuffered channels y buffered channels
 
 	// Canal sin buffer genera bloqueo
