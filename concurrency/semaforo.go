@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func main() {
+func main_3() {
 	// Limita la cantidad de rutinas ejecutadas al tiempo
 	c := make(chan int, 2)
 	var wg sync.WaitGroup
