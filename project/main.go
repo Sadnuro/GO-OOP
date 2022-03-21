@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -67,6 +70,7 @@ func (w Worker) Stop() {
 	}()
 }
 
+// Crea Workers: Distribuye jobs a los workers
 func NewDispatcher(jobQueue chan Job, maxWorkers int) *Dispatcher {
 	// maxWorkers: Cantidad maxima de trabajadores para el canal
 	worker := make(chan chan Job, maxWorkers)
@@ -92,9 +96,82 @@ func (d *Dispatcher) Dispatch() {
 	}
 }
 
+// Itera sobre maxWorkers
+// Crea los Workers, de acuerdo al WorkerPool del dispatcher
+// WorkerPool: Canales para los trabajadores
+func (d *Dispatcher) Run() {
+	for i := 0; i < d.MaxWorkers; i++ {
+		// i: id del trabajador | workerpool: Grupo de trabajo al que pertenece
+		worker := NewWorker(i, d.WorkerPool)
+		worker.Start()
+	}
+
+	go d.Dispatch()
+}
+
 func Fibonacci(n int) int {
 	if n <= 1 {
 		return n
 	}
 	return Fibonacci(n-1) + Fibonacci(n-2)
+}
+
+// Maneja toda la capacidad de procesamiento del servidor
+func RequestHandler(res http.ResponseWriter, req *http.Request, jobQueue chan Job) {
+	/*	Req format:
+		name: Fib1
+		value: 65
+		delay: 3s
+	*/
+
+	if req.Method != "POST" { // Not allowed: GET, PUT, DELET, etc.
+		res.Header().Set("Allow", "POST")
+		res.WriteHeader(http.StatusMethodNotAllowed)
+	}
+
+	// FormValue: Permite acceder a todos los parametros del request
+	// Obtiene parametro [Delay]
+	delay, err := time.ParseDuration(req.FormValue("delay"))
+	if err != nil {
+		http.Error(res, "Invalid [delay]", http.StatusBadRequest)
+		return
+	}
+	// Obtiene parametro [Number]
+	value, err := strconv.Atoi(req.FormValue("value"))
+	if err != nil {
+		http.Error(res, "Invalid [value]", http.StatusBadRequest)
+		return
+	}
+	// Obtiene parametro [name]
+	name := req.FormValue("name")
+	if name == "" {
+		http.Error(res, "Invalid [name]", http.StatusBadRequest)
+		return
+	}
+
+	job := Job{Name: name, Delay: delay, Number: value}
+	jobQueue <- job
+	res.WriteHeader(http.StatusCreated)
+}
+
+func main() {
+
+	const (
+		maxWorkers   = 4       // Max Quantity of workers
+		maxQueueSize = 20      // Max Quantity of Jobs processed simultaneously
+		port         = ":8081" // Server PORT
+	)
+
+	jobQueue := make(chan Job, maxQueueSize)          // Manejar todos los jobs recibidos en las peticiones
+	dispatcher := NewDispatcher(jobQueue, maxWorkers) //
+
+	dispatcher.Run()
+
+	// http://localhost:8081/fib
+	http.HandleFunc("/fib", func(res http.ResponseWriter, req *http.Request) {
+		RequestHandler(res, req, jobQueue)
+	})
+
+	// Ejecuta si la funcion deja de funcionar
+	log.Fatal(http.ListenAndServe(port, nil))
 }
